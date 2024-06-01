@@ -2,6 +2,7 @@ import ctypes
 import re
 import struct
 import sys
+import xml.dom.minidom
 from xml.dom.minidom import parseString
 
 fastlz = ctypes.cdll.LoadLibrary("./fastlz.so")
@@ -50,6 +51,13 @@ class Reader:
 		v = self.data[self.ptr : self.ptr + count]
 		self.skip(count)
 		return v
+
+
+class ComponentFieldData:
+	size: int
+	typename: str
+	field: str
+	variable_size: bool
 
 
 class Component:
@@ -103,10 +111,40 @@ def fix(s):
 	return fix(s)
 
 
+component_data: dict[str, list[ComponentFieldData]] = {}
+type_sizes = {}
+
 schema_content = fix(schema_content)
 tree = parseString(schema_content)
+for i in tree.documentElement.childNodes:
+	if not isinstance(i, xml.dom.minidom.Element):
+		continue
+	comp_name = i.getAttribute("component_name")
+	v: list[ComponentFieldData] = []
+	component_data[comp_name] = v
+	for child in i.childNodes:
+		if not isinstance(child, xml.dom.minidom.Element):
+			continue
+		var_name = child.getAttribute("name")
+		var_size = child.getAttribute("size")
+		var_type = child.getAttribute("type")
+		var_variable_size = False
+		if "<" in var_type:
+			var_special_t = var_type.split(" ")[1].split("<")[0]
+			if var_special_t == "std::basic_string" or var_special_t == "std::vector":
+				var_variable_size = True
+
+		data = ComponentFieldData()
+		data.typename = var_type
+		data.field = var_name
+		data.size = int(var_size)
+		data.variable_size = var_variable_size
+		v.append(data)
+		if not var_variable_size:
+			type_sizes[var_type] = data.size
 
 maybe_num_entities = data_reader.read_be(4)
+print(maybe_num_entities)
 
 
 def parse_entity(reader: Reader):
@@ -131,14 +169,45 @@ def parse_entity(reader: Reader):
 	parse_component(reader)
 
 
+def bstr(a):
+	return str(a)[2:-1]
+
+
+def do_type(data, t):
+	vec2 = "class ceng::math::CVector2<"
+	if t == "bool":
+		data = data == b"\x00"
+	elif t == "float":
+		data = struct.unpack("f", data[::-1])[0]
+	elif t == "int":
+		data = struct.unpack("i", data[::-1])[0]
+	elif t[: len(vec2)] == vec2:
+		true_type = t[len(vec2) : -1]
+		true_size = type_sizes[true_type]
+		data = (
+			do_type(data[:true_size], true_type),
+			do_type(data[true_size:], true_type),
+		)
+	return data
+
+
 def parse_component(reader: Reader):
 	component_name_len = reader.read_be(4)
-	component_name = reader.read_bytes(component_name_len)
+	component_name = bstr(reader.read_bytes(component_name_len))
 	print(component_name)
 	reader.skip(2)  # 0x0101
 	component_tag_len = reader.read_be(4)
 	component_tags = reader.read_bytes(component_tag_len)
 	print(component_tags)
+	fields = component_data[component_name]
+	data = {}
+	for field in fields:
+		look_size = field.size
+		if field.variable_size:
+			look_size = reader.read_be(4)
+		val = reader.read_bytes(look_size)
+		data[field.field] = do_type(val, field.typename)
+	print(data)
 
 
 parse_entity(data_reader)
