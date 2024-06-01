@@ -112,7 +112,7 @@ def fix(s):
 
 
 component_data: dict[str, list[ComponentFieldData]] = {}
-type_sizes = {}
+type_sizes: dict[str, int] = {}
 
 schema_content = fix(schema_content)
 tree = parseString(schema_content)
