@@ -110,34 +110,34 @@ maybe_num_entities = data_reader.read_be(4)
 
 
 def parse_entity(reader: Reader):
-	name_len = data_reader.read_be(4)
-	name = data_reader.read_bytes(name_len)
-	data_reader.skip(1)  # 0x00
+	name_len = reader.read_be(4)
+	name = reader.read_bytes(name_len)
+	reader.skip(1)  # 0x00
 	print(name)
-	path_len = data_reader.read_be(4)
-	path = data_reader.read_bytes(path_len)
+	path_len = reader.read_be(4)
+	path = reader.read_bytes(path_len)
 	print(path)
-	tag_len = data_reader.read_be(4)
-	tag = data_reader.read_bytes(tag_len)
+	tag_len = reader.read_be(4)
+	tag = reader.read_bytes(tag_len)
 	print(tag)
-	x = data_reader.read_float()
-	y = data_reader.read_float()
-	scale_x = data_reader.read_float()
-	scale_y = data_reader.read_float()
-	rotation = data_reader.read_float()
+	x = reader.read_float()
+	y = reader.read_float()
+	scale_x = reader.read_float()
+	scale_y = reader.read_float()
+	rotation = reader.read_float()
 	print(x, y, scale_x, scale_y, rotation)
-	maybe_num_comps = data_reader.read_be(4)
+	maybe_num_comps = reader.read_be(4)
 	print(maybe_num_comps)
-	parse_component(data_reader)
+	parse_component(reader)
 
 
 def parse_component(reader: Reader):
-	component_name_len = data_reader.read_be(4)
-	component_name = data_reader.read_bytes(component_name_len)
+	component_name_len = reader.read_be(4)
+	component_name = reader.read_bytes(component_name_len)
 	print(component_name)
-	data_reader.skip(2)  # 0x0101
-	component_tag_len = data_reader.read_be(4)
-	component_tags = data_reader.read_bytes(component_tag_len)
+	reader.skip(2)  # 0x0101
+	component_tag_len = reader.read_be(4)
+	component_tags = reader.read_bytes(component_tag_len)
 	print(component_tags)
 
 
