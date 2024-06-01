@@ -1,7 +1,7 @@
 import ctypes
 import sys
 
-fastlz = ctypes.cdll.LoadLibrary("./fastlz_debug.so")
+fastlz = ctypes.cdll.LoadLibrary("./fastlz.so")
 
 
 class Reader:
