@@ -1,5 +1,6 @@
 import ctypes
 import json
+import os
 import re
 import struct
 import sys
@@ -87,10 +88,6 @@ class Entity:
 	children: list["Entity"]
 
 
-path = sys.argv[1]
-compressed_data = open(path, "rb").read()
-
-
 def parse_entity(reader: Reader, type_sizes, component_data, child_counts):
 	name_len = reader.read_be(4)
 	name = bstr(reader.read_bytes(name_len))
@@ -109,6 +106,7 @@ def parse_entity(reader: Reader, type_sizes, component_data, child_counts):
 	for _ in range(maybe_num_comps):
 		entity.components.append(parse_component(reader, type_sizes, component_data))
 	child_counts.append(reader.read_be(4))
+	print(entity)
 	return entity
 
 
@@ -129,7 +127,8 @@ def do_type(reader: Reader, t: str, type_sizes, component_data) -> Any:
 	elif t == "double":
 		data = struct.unpack("d", reader.read_bytes(8)[::-1])[0]
 	elif t == "int" or t == "int32":
-		data = struct.unpack("i", reader.read_bytes(4)[::-1])[0]
+		print(hex(reader.ptr))
+		data = hex(struct.unpack("i", reader.read_bytes(4)[::-1])[0])
 	elif t == "__int64":
 		data = struct.unpack("l", reader.read_bytes(8)[::-1])[0]
 	elif t == "unsigned int" or t == "uint32":
@@ -185,7 +184,7 @@ def do_type(reader: Reader, t: str, type_sizes, component_data) -> Any:
 		data = [reader.read_be(4) for _ in range(size)]
 	elif t[-4:] == "Enum":
 		data = reader.read_be(type_sizes[t])
-	elif "*" in t:
+	elif t == "struct SpriteStains *":
 		data = None
 	else:
 		if t in object_map.keys():
@@ -201,6 +200,7 @@ def do_type(reader: Reader, t: str, type_sizes, component_data) -> Any:
 
 def parse_component(reader: Reader, type_sizes, component_data) -> Component:
 	component_name_len = reader.read_be(4)
+	print(component_name_len)
 	component_name = bstr(reader.read_bytes(component_name_len))
 	reader.mystery(1, "0101")  # first is ??? second is enabled
 	enabled = reader.read_bytes(1) == "\x01"
@@ -209,7 +209,9 @@ def parse_component(reader: Reader, type_sizes, component_data) -> Component:
 	fields = component_data[component_name]
 	data = {}
 	for field in fields:
+		print(field.field, field.typename, hex(reader.ptr), end=" ")
 		data[field.field] = do_type(reader, field.typename, type_sizes, component_data)
+		print(data[field.field])
 	return Component(component_name, component_tags.split(","), data, enabled)
 
 
@@ -302,6 +304,14 @@ def parse_data(compressed_data):
 	return parented.children
 
 
-parsed = {"entities": parse_data(compressed_data)}
+if __name__ == "__main__":
+	path = sys.argv[1]
+	files = os.listdir(path)
+	files = [x for x in files if "entities" in x]
+	for file in files:
+		print(file)
+		compressed_data = open(path + file, "rb").read()
 
-print(json.dumps(parsed, default=lambda x: x.__dict__))
+		parsed = {"entities": parse_data(compressed_data)}
+
+		print(json.dumps(parsed, default=lambda x: x.__dict__))
