@@ -185,6 +185,8 @@ def do_type(reader: Reader, t: str) -> Any:
 		data = struct.unpack("d", reader.read_bytes(8)[::-1])[0]
 	elif t == "int" or t == "int32":
 		data = struct.unpack("i", reader.read_bytes(4)[::-1])[0]
+	elif t == "__int64":
+		data = struct.unpack("l", reader.read_bytes(8)[::-1])[0]
 	elif t == "unsigned int" or t == "uint32":
 		data = struct.unpack("I", reader.read_bytes(4)[::-1])[0]
 	elif t == "unsigned __int64":
@@ -212,7 +214,16 @@ def do_type(reader: Reader, t: str) -> Any:
 			"rotation": do_type(reader, true_type),
 		}
 	elif t[: len(vector)] == vector:
-		true_type = t[len(vector) :].split(",")[0]
+		partial_type = t[len(vector) :]
+		true_type = ""
+		count = 0
+		for c in partial_type:
+			if c == "," and count == 0:
+				true_type = partial_type[:c]
+			elif c == "<":
+				count += 1
+			elif c == ">":
+				count -= 1
 		data = [do_type(reader, true_type) for _ in range(reader.read_be(4))]
 	elif t == string or t == "string":
 		size = reader.read_be(4)
@@ -254,6 +265,15 @@ def parse_component(reader: Reader) -> Component:
 	comp.tags = component_tags.split(",")
 	return comp
 
+
+if True:
+	for test in type_sizes.keys():
+		try:
+			do_type(Reader(b"\x01" * 4096), test)
+		except Exception as e:
+			print(test, "ERR\n", e)
+
+exit(0)
 
 for _ in range(maybe_num_entities):
 	parse_entity(data_reader)
