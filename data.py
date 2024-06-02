@@ -158,4 +158,7 @@ object_map: dict[str, list[tuple[str, str]]] = {
 		("sound_loop_tag", "string"),
 		("projectile_file", "string"),
 	],
+	"ValueRange": [("min", "float"), ("max", "float")],
+	"struct ValueRange": [("min", "float"), ("max", "float")],
+	"ValueRangeInt": [("min", "int"), ("max", "int")],
 }
