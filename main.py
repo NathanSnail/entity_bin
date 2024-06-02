@@ -273,8 +273,6 @@ if False:
 		except Exception as e:
 			print(test, "ERR\n", e)
 
-exit(0)
-
 for _ in range(maybe_num_entities):
 	parse_entity(data_reader)
 	data_reader.skip(4)  # ???
