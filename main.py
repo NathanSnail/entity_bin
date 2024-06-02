@@ -222,6 +222,8 @@ def do_type(reader: Reader, t: str) -> Any:
 		data = [reader.read_be(4) for _ in range(size)]
 	elif t[-4:] == "Enum":
 		data = reader.read_be(type_sizes[t])
+	elif t == "SpriteStains *":
+		data = None
 	else:
 		if t in object_map.keys():
 			component_object = {}
