@@ -196,4 +196,12 @@ object_map: dict[str, list[tuple[str, str]]] = {
 		("damage_apply_hitbox_dmg_multiplier", "bool"),
 		("root_entity_is_responsible_for_damage", "bool"),
 	],
+	"class ConfigDrugFx": [
+		("distortion_amount", "float"),
+		("color_amount", "float"),
+		("fractals_amount", "float"),
+		("fractals_size", "float"),
+		("nightvision_amount", "float"),
+		("doublevision_amount", "float"),
+	],
 }
