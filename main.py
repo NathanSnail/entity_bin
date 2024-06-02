@@ -49,6 +49,9 @@ class Reader:
 	def skip(self, count: int):
 		self.ptr += count
 
+	def mystery(self, count: int, message: str):
+		print(message, self.read_bytes(count))
+
 	def read_bytes(self, count: int) -> bytes:
 		v = self.data[self.ptr : self.ptr + count]
 		self.skip(count)
@@ -64,6 +67,7 @@ class Component:
 	name: str
 	tags: list[str]
 	fields: dict[str, Any]
+	enabled: bool
 
 
 class Entity:
@@ -80,68 +84,12 @@ class Entity:
 
 path = sys.argv[1]
 compressed_data = open(path, "rb").read()
-compressed_reader = Reader(compressed_data)
-compressed_size, decompressed_size = compressed_reader.read_le(
-	4
-), compressed_reader.read_le(4)
-input_buffer = ctypes.create_string_buffer(
-	compressed_data[compressed_reader.ptr :], compressed_size
-)
-output_buffer = ctypes.create_string_buffer(decompressed_size)
-fastlz.fastlz_decompress.restype = ctypes.c_int32
-fastlz.fastlz_decompress(
-	input_buffer, compressed_size, output_buffer, decompressed_size
-)
-decompressed = b"".join([x for x in output_buffer])
-open("./out", "wb").write(decompressed)
-data_reader = Reader(decompressed)
-data_reader.skip(8)
-hash = data_reader.read_bytes(0x20)
-schema_content = open(
-	"/home/nathan/Documents/code/noitadata/data/schemas/" + str(hash)[2:-1] + ".xml",
-	"r",
-).read()
 
 
-def fix(s):
-	os = s
-	s = re.sub(r'("[^\n]*)>([^\n]*")', r"\1&gt;\2", s)
-	s = re.sub(r'("[^\n]*)<([^\n]*")', r"\1&lt;\2", s)
-	if s == os:
-		return s
-	return fix(s)
-
-
-component_data: dict[str, list[ComponentFieldData]] = {}
-type_sizes: dict[str, int] = {}
-
-schema_content = fix(schema_content)
-tree = parseString(schema_content)
-for i in tree.documentElement.childNodes:
-	if not isinstance(i, xml.dom.minidom.Element):
-		continue
-	comp_name = i.getAttribute("component_name")
-	v: list[ComponentFieldData] = []
-	component_data[comp_name] = v
-	for child in i.childNodes:
-		if not isinstance(child, xml.dom.minidom.Element):
-			continue
-		var_name = child.getAttribute("name")
-		var_size = int(child.getAttribute("size"))
-		var_type = child.getAttribute("type")
-		data = ComponentFieldData()
-		data.typename = var_type
-		data.field = var_name
-		v.append(data)
-		type_sizes[var_type] = var_size
-
-maybe_num_entities = data_reader.read_be(4)
-
-
-def parse_entity(reader: Reader):
+def parse_entity(reader: Reader, type_sizes, component_data):
 	name_len = reader.read_be(4)
 	name = bstr(reader.read_bytes(name_len))
-	reader.skip(1)  # 0x00
+	reader.mystery(1, "00")  # 0x00
 	path_len = reader.read_be(4)
 	path = bstr(reader.read_bytes(path_len))
 	tag_len = reader.read_be(4)
@@ -163,7 +111,7 @@ def parse_entity(reader: Reader):
 	entity.rotation = rotation
 	entity.components = []
 	for _ in range(maybe_num_comps):
-		entity.components.append(parse_component(reader))
+		entity.components.append(parse_component(reader, type_sizes, component_data))
 	return entity
 
 
@@ -171,7 +119,7 @@ def bstr(a: bytes) -> str:
 	return str(a)[2:-1]
 
 
-def do_type(reader: Reader, t: str) -> Any:
+def do_type(reader: Reader, t: str, type_sizes, component_data) -> Any:
 	vec2 = "class ceng::math::CVector2<"
 	xform = "struct ceng::math::CXForm<"
 	lens = "struct LensValue<"
@@ -196,22 +144,26 @@ def do_type(reader: Reader, t: str) -> Any:
 	elif t[: len(vec2)] == vec2:
 		true_type = t[len(vec2) : -1]
 		data = (
-			do_type(reader, true_type),
-			do_type(reader, true_type),
+			do_type(reader, true_type, type_sizes, component_data),
+			do_type(reader, true_type, type_sizes, component_data),
 		)
 	elif t[: len(lens)] == lens:
 		true_type = t[len(lens) : -1]
 		data = (
-			do_type(reader, true_type),
-			do_type(reader, true_type),
-			do_type(reader, "int"),
+			do_type(reader, true_type, type_sizes, component_data),
+			do_type(reader, true_type, type_sizes, component_data),
+			do_type(reader, "int", type_sizes, component_data),
 		)
 	elif t[: len(xform)] == xform:
 		true_type = t[len(xform) : -1]
 		data = {
-			"position": do_type(reader, vec2 + true_type + ">"),
-			"scale": do_type(reader, vec2 + true_type + ">"),
-			"rotation": do_type(reader, true_type),
+			"position": do_type(
+				reader, vec2 + true_type + ">", type_sizes, component_data
+			),
+			"scale": do_type(
+				reader, vec2 + true_type + ">", type_sizes, component_data
+			),
+			"rotation": do_type(reader, true_type, type_sizes, component_data),
 		}
 	elif t[: len(vector)] == vector:
 		partial_type = t[len(vector) :]
@@ -224,7 +176,10 @@ def do_type(reader: Reader, t: str) -> Any:
 				count += 1
 			elif c == ">":
 				count -= 1
-		data = [do_type(reader, true_type) for _ in range(reader.read_be(4))]
+		data = [
+			do_type(reader, true_type, type_sizes, component_data)
+			for _ in range(reader.read_be(4))
+		]
 	elif t == string or t == "string":
 		size = reader.read_be(4)
 		data = bstr(reader.read_bytes(size))
@@ -239,40 +194,95 @@ def do_type(reader: Reader, t: str) -> Any:
 		if t in object_map.keys():
 			component_object = {}
 			for field in object_map[t]:
-				component_object[field[0]] = do_type(reader, field[1])
+				component_object[field[0]] = do_type(
+					reader, field[1], type_sizes, component_data
+				)
 			return component_object
-		print(hex(reader.ptr))
-		raise Exception("unknown type: " + t)
+		raise Exception("unknown type: " + t + " at " + hex(reader.ptr))
 	return data
 
 
-def parse_component(reader: Reader) -> Component:
+def parse_component(reader: Reader, type_sizes, component_data) -> Component:
 	comp = Component()
 	component_name_len = reader.read_be(4)
 	component_name = bstr(reader.read_bytes(component_name_len))
-	reader.skip(2)  # 0x0101
+	print(component_name)
+	reader.mystery(1, "0101")  # 0x0101
+	comp.enabled = reader.read_bytes(1) == "\x01"
 	component_tag_len = reader.read_be(4)
 	component_tags = bstr(reader.read_bytes(component_tag_len))
 	fields = component_data[component_name]
 	data = {}
-	print(component_name)
 	for field in fields:
-		print("\t", field.field, field.typename, end=" ")
-		data[field.field] = do_type(reader, field.typename)
-		print("\t", "(" + str(data[field.field]) + ")")
+		data[field.field] = do_type(reader, field.typename, type_sizes, component_data)
 	comp.fields = data
 	comp.name = component_name
 	comp.tags = component_tags.split(",")
 	return comp
 
 
-if False:
-	for test in type_sizes.keys():
-		try:
-			do_type(Reader(b"\x01" * 4096), test)
-		except Exception as e:
-			print(test, "ERR\n", e)
+def parse_data(compressed_data):
+	compressed_reader = Reader(compressed_data)
+	compressed_size, decompressed_size = compressed_reader.read_le(
+		4
+	), compressed_reader.read_le(4)
+	input_buffer = ctypes.create_string_buffer(
+		compressed_data[compressed_reader.ptr :], compressed_size
+	)
+	output_buffer = ctypes.create_string_buffer(decompressed_size)
+	fastlz.fastlz_decompress.restype = ctypes.c_int32
+	fastlz.fastlz_decompress(
+		input_buffer, compressed_size, output_buffer, decompressed_size
+	)
+	decompressed = b"".join([x for x in output_buffer])
+	open("./out", "wb").write(decompressed)
+	data_reader = Reader(decompressed)
+	data_reader.skip(8)  # size info
+	hash = data_reader.read_bytes(0x20)
+	schema_content = open(
+		"/home/nathan/Documents/code/noitadata/data/schemas/"
+		+ str(hash)[2:-1]
+		+ ".xml",
+		"r",
+	).read()
 
-for _ in range(maybe_num_entities):
-	parse_entity(data_reader)
-	data_reader.skip(4)  # ???
+	def fix(s):
+		os = s
+		s = re.sub(r'("[^\n]*)>([^\n]*")', r"\1&gt;\2", s)
+		s = re.sub(r'("[^\n]*)<([^\n]*")', r"\1&lt;\2", s)
+		if s == os:
+			return s
+		return fix(s)
+
+	component_data: dict[str, list[ComponentFieldData]] = {}
+	type_sizes: dict[str, int] = {}
+
+	schema_content = fix(schema_content)
+	tree = parseString(schema_content)
+	for i in tree.documentElement.childNodes:
+		if not isinstance(i, xml.dom.minidom.Element):
+			continue
+		comp_name = i.getAttribute("component_name")
+		v: list[ComponentFieldData] = []
+		component_data[comp_name] = v
+		for child in i.childNodes:
+			if not isinstance(child, xml.dom.minidom.Element):
+				continue
+			var_name = child.getAttribute("name")
+			var_size = int(child.getAttribute("size"))
+			var_type = child.getAttribute("type")
+			data = ComponentFieldData()
+			data.typename = var_type
+			data.field = var_name
+			v.append(data)
+			type_sizes[var_type] = var_size
+
+	maybe_num_entities = data_reader.read_be(4)
+	print(maybe_num_entities)
+
+	for _ in range(maybe_num_entities):
+		parse_entity(data_reader, type_sizes, component_data)
+		data_reader.mystery(4, "???")  # ???
+
+
+parse_data(compressed_data)
