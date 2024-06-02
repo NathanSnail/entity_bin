@@ -6,6 +6,8 @@ import xml.dom.minidom
 from typing import Any
 from xml.dom.minidom import parseString
 
+from data import object_map
+
 fastlz = ctypes.cdll.LoadLibrary("./fastlz.so")
 
 
@@ -54,10 +56,8 @@ class Reader:
 
 
 class ComponentFieldData:
-	size: int
 	typename: str
 	field: str
-	variable_size: list[int]
 
 
 class Component:
@@ -127,26 +127,18 @@ for i in tree.documentElement.childNodes:
 		if not isinstance(child, xml.dom.minidom.Element):
 			continue
 		var_name = child.getAttribute("name")
-		var_size = child.getAttribute("size")
+		var_size = int(child.getAttribute("size"))
 		var_type = child.getAttribute("type")
-		var_variable_size = []
-		if "<" in var_type:
-			var_special_t = var_type.split(" ")[1].split("<")[0]
-			if var_special_t == "std::basic_string" or var_special_t == "std::vector":
-				var_variable_size = [0]
-				var_size = "0"
-			if var_special_t == "class ConfigExplosion":
-				print("??")
-				var_variable_size = [5]
+		special = False
+		if var_type in ["class ConfigExplosion"]:
+			special = True
 
 		data = ComponentFieldData()
 		data.typename = var_type
 		data.field = var_name
-		data.size = int(var_size)
-		data.variable_size = var_variable_size
 		v.append(data)
-		if not var_variable_size:
-			type_sizes[var_type] = data.size
+		if not special:
+			type_sizes[var_type] = var_size
 
 maybe_num_entities = data_reader.read_be(4)
 
@@ -154,11 +146,9 @@ maybe_num_entities = data_reader.read_be(4)
 def parse_entity(reader: Reader):
 	name_len = reader.read_be(4)
 	name = bstr(reader.read_bytes(name_len))
-	print("N", name)
 	reader.skip(1)  # 0x00
 	path_len = reader.read_be(4)
 	path = bstr(reader.read_bytes(path_len))
-	print("!", path)
 	tag_len = reader.read_be(4)
 	tag = bstr(reader.read_bytes(tag_len)).split(",")
 	x = reader.read_float()
@@ -182,25 +172,52 @@ def parse_entity(reader: Reader):
 	return entity
 
 
-def bstr(a):
+def bstr(a: bytes) -> str:
 	return str(a)[2:-1]
 
 
-def do_type(data, t, f):
+def do_type(reader: Reader, t: str) -> Any:
 	vec2 = "class ceng::math::CVector2<"
+	xform = "class ceng::math::CXForm<"
+	lens = "struct LensValue<"
+	string = "class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >"
 	if t == "bool":
-		data = data == b"\x01"
+		data = reader.read_bytes(1) == b"\x01"
 	elif t == "float":
-		data = struct.unpack("f", data[::-1])[0]
+		data = struct.unpack("f", reader.read_bytes(4)[::-1])[0]
 	elif t == "int":
-		data = struct.unpack("i", data[::-1])[0]
+		data = struct.unpack("i", reader.read_bytes(4)[::-1])[0]
+	elif t == "unsigned int":
+		data = struct.unpack("I", reader.read_bytes(4)[::-1])[0]
 	elif t[: len(vec2)] == vec2:
 		true_type = t[len(vec2) : -1]
-		true_size = type_sizes[true_type]
 		data = (
-			do_type(data[:true_size], true_type, f),
-			do_type(data[true_size:], true_type, f),
+			do_type(reader, true_type),
+			do_type(reader, true_type),
 		)
+	elif t[: len(lens)] == lens:
+		true_type = t[len(lens) : -1]
+		data = (
+			do_type(reader, true_type),
+			do_type(reader, true_type),
+			do_type(reader, "int"),
+		)
+	elif t == string or t == "string":
+		size = reader.read_be(4)
+		data = bstr(reader.read_bytes(size))
+	elif t == "ValueRange":
+		data = (do_type(reader, "float"), do_type(reader, "float"))
+	elif t == "ValueRangeInt":
+		data = (do_type(reader, "int"), do_type(reader, "int"))
+	elif t[-4:] == "Enum":
+		data = reader.read_be(type_sizes[t])
+	else:
+		if t in object_map.keys():
+			component_object = {}
+			for field in object_map[t]:
+				component_object[field[0]] = do_type(reader, field[1])
+			return component_object
+		raise Exception("unknown type: " + t)
 	return data
 
 
@@ -213,24 +230,11 @@ def parse_component(reader: Reader) -> Component:
 	component_tags = bstr(reader.read_bytes(component_tag_len))
 	fields = component_data[component_name]
 	data = {}
+	print(component_name)
 	for field in fields:
-		look_size = field.size
-		print(field.field, look_size, field.typename, hex(reader.ptr))
-		start = reader.ptr
-		eaten = 0
-		val = b""
-		for offset in field.variable_size:
-			print(offset)
-			val += reader.read_bytes((offset + start + eaten) - reader.ptr)
-			to_skip = reader.read_be(4)
-			eaten += to_skip
-			scale = reader.read_bytes(to_skip)
-			print(scale)
-			val += scale
-		if len(field.variable_size) == 0:
-			val = reader.read_bytes(look_size)
-		data[field.field] = do_type(val, field.typename, field.field)
-		print(field.field, data[field.field])
+		# print(field.field, field.typename, end=" ")
+		data[field.field] = do_type(reader, field.typename)
+		# print("(" + str(data[field.field]) + ")")
 	comp.fields = data
 	comp.name = component_name
 	comp.tags = component_tags.split(",")
@@ -240,4 +244,3 @@ def parse_component(reader: Reader) -> Component:
 for _ in range(maybe_num_entities):
 	parse_entity(data_reader)
 	data_reader.skip(4)  # ???
-	print(data_reader.data[data_reader.ptr :])
