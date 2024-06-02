@@ -49,15 +49,13 @@ class Reader:
 				return val
 			val += bytes([x])
 
-	def skip(self, count: int):
-		self.ptr += count
-
 	def mystery(self, count: int, message: str):
 		print(message, self.read_bytes(count))
 
 	def read_bytes(self, count: int) -> bytes:
 		v = self.data[self.ptr : self.ptr + count]
 		self.skip(count)
+		self.ptr += count
 		return v
 
 
