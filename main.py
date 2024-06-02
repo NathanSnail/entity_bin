@@ -191,6 +191,11 @@ def do_type(reader: Reader, t: str) -> Any:
 		data = struct.unpack("L", reader.read_bytes(8)[::-1])[0]
 	elif t == "unsigned short":
 		data = struct.unpack("H", reader.read_bytes(2)[::-1])[0]
+	elif t == "struct types::iaabb":
+		data = {
+			"min": do_type(reader, "class ceng::math::CVector2<int>"),
+			"max": do_type(reader, "class ceng::math::CVector2<int>"),
+		}
 	elif t[: len(vec2)] == vec2:
 		true_type = t[len(vec2) : -1]
 		data = (
