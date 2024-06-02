@@ -217,9 +217,9 @@ def do_type(reader: Reader, t: str) -> Any:
 		partial_type = t[len(vector) :]
 		true_type = ""
 		count = 0
-		for c in partial_type:
+		for k, c in enumerate(partial_type):
 			if c == "," and count == 0:
-				true_type = partial_type[:c]
+				true_type = partial_type[:k]
 			elif c == "<":
 				count += 1
 			elif c == ">":
@@ -266,7 +266,7 @@ def parse_component(reader: Reader) -> Component:
 	return comp
 
 
-if True:
+if False:
 	for test in type_sizes.keys():
 		try:
 			do_type(Reader(b"\x01" * 4096), test)
