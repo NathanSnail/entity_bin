@@ -237,7 +237,7 @@ def parse_data(compressed_data):
 	decompressed = b"".join([x for x in output_buffer])
 	open("./out", "wb").write(decompressed)
 	data_reader = Reader(decompressed)
-	data_reader.skip(8)  # size info
+	data_reader.mystery(8, "?!")  # size info
 	hash = data_reader.read_bytes(0x20)
 	schema_content = open(
 		"/home/nathan/Documents/code/noitadata/data/schemas/"
