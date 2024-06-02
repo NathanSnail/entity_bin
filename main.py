@@ -287,23 +287,18 @@ def parse_data(compressed_data):
 		e = parse_entity(data_reader, type_sizes, component_data, child_counts)
 		entities.append(e)
 		i = i + 1
-	print(child_counts)
-	i = 1
-	for k, e in enumerate(child_counts):
-		for _ in range(e):
-			entities[k].children.append(entities[i])
-			i = i + 1
+
+	def adjust(a):
+		return {"name": a.name, "children": [adjust(c) for c in a.children]}
 
 	def handle(data: list[tuple[Entity, int]]) -> Entity:
-		v = data[0]
-		data = data[1:]
-		print(v[1])
+		v = data.pop(0)
 		for _ in range(v[1]):
 			v[0].children.append(handle(data))
 		return v[0]
 
-	print(list(zip([x.name for x in entities], child_counts)))
-	print(handle(list(zip(entities, child_counts))))
+	parented = handle(list(zip(entities, child_counts)))
+	return parented.children
 
 
-parse_data(compressed_data)
+print(parse_data(compressed_data))
