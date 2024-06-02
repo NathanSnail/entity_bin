@@ -40,6 +40,10 @@ class Reader:
 	def read_float(self) -> float:
 		return struct.unpack("f", self.read_bytes(4)[::-1])[0]
 
+	def assertion(self, count: int, value: bytes, message: str):
+		if self.read_bytes(count) != value:
+			raise Exception(message)
+
 	def read_null_term(self) -> bytes:
 		val = b""
 		while True:
@@ -54,7 +58,6 @@ class Reader:
 
 	def read_bytes(self, count: int) -> bytes:
 		v = self.data[self.ptr : self.ptr + count]
-		self.skip(count)
 		self.ptr += count
 		return v
 
@@ -89,7 +92,7 @@ class Entity:
 def parse_entity(reader: Reader, type_sizes, component_data, child_counts):
 	name_len = reader.read_be(4)
 	name = bstr(reader.read_bytes(name_len))
-	reader.mystery(1, "00")  # 0x00
+	reader.assertion(1, b"\x00", "entity null expected")  # 0x00
 	path_len = reader.read_be(4)
 	path = bstr(reader.read_bytes(path_len))
 	tag_len = reader.read_be(4)
@@ -104,7 +107,6 @@ def parse_entity(reader: Reader, type_sizes, component_data, child_counts):
 	for _ in range(maybe_num_comps):
 		entity.components.append(parse_component(reader, type_sizes, component_data))
 	child_counts.append(reader.read_be(4))
-	print(entity)
 	return entity
 
 
@@ -125,7 +127,6 @@ def do_type(reader: Reader, t: str, type_sizes, component_data) -> Any:
 	elif t == "double":
 		data = struct.unpack("d", reader.read_bytes(8)[::-1])[0]
 	elif t == "int" or t == "int32":
-		print(hex(reader.ptr))
 		data = hex(struct.unpack("i", reader.read_bytes(4)[::-1])[0])
 	elif t == "__int64":
 		data = struct.unpack("l", reader.read_bytes(8)[::-1])[0]
@@ -198,18 +199,17 @@ def do_type(reader: Reader, t: str, type_sizes, component_data) -> Any:
 
 def parse_component(reader: Reader, type_sizes, component_data) -> Component:
 	component_name_len = reader.read_be(4)
-	print(component_name_len)
 	component_name = bstr(reader.read_bytes(component_name_len))
-	reader.mystery(1, "0101")  # first is ??? second is enabled
+	reader.assertion(1, b"\x01", "1 in component")  # first is ??? second is enabled
 	enabled = reader.read_bytes(1) == "\x01"
 	component_tag_len = reader.read_be(4)
 	component_tags = bstr(reader.read_bytes(component_tag_len))
 	fields = component_data[component_name]
 	data = {}
 	for field in fields:
-		print(field.field, field.typename, hex(reader.ptr), end=" ")
+		# print(field.field, field.typename, hex(reader.ptr), end=" ")
 		data[field.field] = do_type(reader, field.typename, type_sizes, component_data)
-		print(data[field.field])
+		# print(data[field.field])
 	return Component(component_name, component_tags.split(","), data, enabled)
 
 
@@ -274,7 +274,6 @@ def parse_data(compressed_data):
 				type_sizes[var_type] = var_size
 
 	maybe_num_entities = data_reader.read_be(4)
-	print(maybe_num_entities)
 
 	root = Entity("root", "??", [], 0, 0, 1, 1, 0, [], [])
 	child_counts = [maybe_num_entities]
@@ -306,10 +305,11 @@ if __name__ == "__main__":
 	path = sys.argv[1]
 	files = os.listdir(path)
 	files = [x for x in files if "entities" in x]
+	entities = []
 	for file in files:
-		print(file)
 		compressed_data = open(path + file, "rb").read()
 
-		parsed = {"entities": parse_data(compressed_data)}
+		parsed = parse_data(compressed_data)
 
-		print(json.dumps(parsed, default=lambda x: x.__dict__))
+		entities += parsed
+	print(json.dumps({"entities": entities}, default=lambda x: x.__dict__))
