@@ -3,6 +3,7 @@ import re
 import struct
 import sys
 import xml.dom.minidom
+from dataclasses import dataclass
 from typing import Any
 from xml.dom.minidom import parseString
 
@@ -63,6 +64,7 @@ class ComponentFieldData:
 	field: str
 
 
+@dataclass
 class Component:
 	name: str
 	tags: list[str]
@@ -70,6 +72,7 @@ class Component:
 	enabled: bool
 
 
+@dataclass
 class Entity:
 	name: str
 	path: str
@@ -80,13 +83,14 @@ class Entity:
 	size_y: float
 	rotation: float
 	components: list[Component]
+	children: list["Entity"]
 
 
 path = sys.argv[1]
 compressed_data = open(path, "rb").read()
 
 
-def parse_entity(reader: Reader, type_sizes, component_data):
+def parse_entity(reader: Reader, type_sizes, component_data, child_counts):
 	name_len = reader.read_be(4)
 	name = bstr(reader.read_bytes(name_len))
 	reader.mystery(1, "00")  # 0x00
@@ -100,18 +104,10 @@ def parse_entity(reader: Reader, type_sizes, component_data):
 	scale_y = reader.read_float()
 	rotation = reader.read_float()
 	maybe_num_comps = reader.read_be(4)
-	entity = Entity()
-	entity.name = name
-	entity.path = path
-	entity.tags = tag
-	entity.x = x
-	entity.y = y
-	entity.size_y = scale_x
-	entity.size_y = scale_y
-	entity.rotation = rotation
-	entity.components = []
+	entity = Entity(name, path, tag, x, y, scale_x, scale_y, rotation, [], [])
 	for _ in range(maybe_num_comps):
 		entity.components.append(parse_component(reader, type_sizes, component_data))
+	child_counts.append(reader.read_be(4))
 	return entity
 
 
@@ -203,22 +199,17 @@ def do_type(reader: Reader, t: str, type_sizes, component_data) -> Any:
 
 
 def parse_component(reader: Reader, type_sizes, component_data) -> Component:
-	comp = Component()
 	component_name_len = reader.read_be(4)
 	component_name = bstr(reader.read_bytes(component_name_len))
-	print(component_name)
-	reader.mystery(1, "0101")  # 0x0101
-	comp.enabled = reader.read_bytes(1) == "\x01"
+	reader.mystery(1, "0101")  # first is ??? second is enabled
+	enabled = reader.read_bytes(1) == "\x01"
 	component_tag_len = reader.read_be(4)
 	component_tags = bstr(reader.read_bytes(component_tag_len))
 	fields = component_data[component_name]
 	data = {}
 	for field in fields:
 		data[field.field] = do_type(reader, field.typename, type_sizes, component_data)
-	comp.fields = data
-	comp.name = component_name
-	comp.tags = component_tags.split(",")
-	return comp
+	return Component(component_name, component_tags.split(","), data, enabled)
 
 
 def parse_data(compressed_data):
@@ -237,52 +228,81 @@ def parse_data(compressed_data):
 	decompressed = b"".join([x for x in output_buffer])
 	open("./out", "wb").write(decompressed)
 	data_reader = Reader(decompressed)
-	data_reader.mystery(8, "?!")  # size info
-	hash = data_reader.read_bytes(0x20)
-	schema_content = open(
-		"/home/nathan/Documents/code/noitadata/data/schemas/"
-		+ str(hash)[2:-1]
-		+ ".xml",
-		"r",
-	).read()
+	data_reader.mystery(4, "?!")  # first is lz level? second is hash length
+	hash_size = data_reader.read_be(4)  # size info
+	hash = data_reader.read_bytes(hash_size)
+	type_sizes = {}
+	component_data = {}
+	if hash != b"":
+		schema_content = open(
+			"/home/nathan/Documents/code/noitadata/data/schemas/"
+			+ str(hash)[2:-1]
+			+ ".xml",
+			"r",
+		).read()
 
-	def fix(s):
-		os = s
-		s = re.sub(r'("[^\n]*)>([^\n]*")', r"\1&gt;\2", s)
-		s = re.sub(r'("[^\n]*)<([^\n]*")', r"\1&lt;\2", s)
-		if s == os:
-			return s
-		return fix(s)
+		def fix(s):
+			os = s
+			s = re.sub(r'("[^\n]*)>([^\n]*")', r"\1&gt;\2", s)
+			s = re.sub(r'("[^\n]*)<([^\n]*")', r"\1&lt;\2", s)
+			if s == os:
+				return s
+			return fix(s)
 
-	component_data: dict[str, list[ComponentFieldData]] = {}
-	type_sizes: dict[str, int] = {}
+		component_data: dict[str, list[ComponentFieldData]] = {}
+		type_sizes: dict[str, int] = {}
 
-	schema_content = fix(schema_content)
-	tree = parseString(schema_content)
-	for i in tree.documentElement.childNodes:
-		if not isinstance(i, xml.dom.minidom.Element):
-			continue
-		comp_name = i.getAttribute("component_name")
-		v: list[ComponentFieldData] = []
-		component_data[comp_name] = v
-		for child in i.childNodes:
-			if not isinstance(child, xml.dom.minidom.Element):
+		schema_content = fix(schema_content)
+		tree = parseString(schema_content)
+		for i in tree.documentElement.childNodes:
+			if not isinstance(i, xml.dom.minidom.Element):
 				continue
-			var_name = child.getAttribute("name")
-			var_size = int(child.getAttribute("size"))
-			var_type = child.getAttribute("type")
-			data = ComponentFieldData()
-			data.typename = var_type
-			data.field = var_name
-			v.append(data)
-			type_sizes[var_type] = var_size
+			comp_name = i.getAttribute("component_name")
+			v: list[ComponentFieldData] = []
+			component_data[comp_name] = v
+			for child in i.childNodes:
+				if not isinstance(child, xml.dom.minidom.Element):
+					continue
+				var_name = child.getAttribute("name")
+				var_size = int(child.getAttribute("size"))
+				var_type = child.getAttribute("type")
+				data = ComponentFieldData()
+				data.typename = var_type
+				data.field = var_name
+				v.append(data)
+				type_sizes[var_type] = var_size
 
 	maybe_num_entities = data_reader.read_be(4)
 	print(maybe_num_entities)
 
-	for _ in range(maybe_num_entities):
-		parse_entity(data_reader, type_sizes, component_data)
-		data_reader.mystery(4, "???")  # ???
+	root = Entity("root", "??", [], 0, 0, 1, 1, 0, [], [])
+	child_counts = [maybe_num_entities]
+	entities = [root]
+	# for _ in range(maybe_num_entities):
+	# 	entities.append(
+	# 		parse_entity(data_reader, type_sizes, component_data, child_counts)
+	# 	)
+	i = 0
+	while i < sum(child_counts):
+		e = parse_entity(data_reader, type_sizes, component_data, child_counts)
+		entities.append(e)
+		i = i + 1
+	print(child_counts)
+	i = 1
+	for k, e in enumerate(child_counts):
+		for _ in range(e):
+			entities[k].children.append(entities[i])
+			i = i + 1
+
+	def handle(data: list[tuple[Entity, int]]) -> Entity:
+		v = data.pop(0)
+		print(v[1])
+		for _ in range(v[1]):
+			v[0].children.append(handle(data))
+		return v[0]
+
+	print(list(zip([x.name for x in entities], child_counts)))
+	print(handle(list(zip(entities, child_counts))))
 
 
 parse_data(compressed_data)
