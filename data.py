@@ -205,4 +205,18 @@ object_map: dict[str, list[tuple[str, str]]] = {
 		("nightvision_amount", "float"),
 		("doublevision_amount", "float"),
 	],
+	"class PixelSprite *": [
+		("1", "string"),
+		("2", "float"),
+		("3", "float"),
+		("4", "float"),
+		("5", "float"),
+		("6", "int"),
+		("7", "int"),
+		("8", "int"),
+		("9", "bool"),
+		("10", "int"),
+		("11", "string"),
+		("12", "bool"),
+	],
 }
