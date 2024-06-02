@@ -191,11 +191,6 @@ def do_type(reader: Reader, t: str) -> Any:
 		data = struct.unpack("L", reader.read_bytes(8)[::-1])[0]
 	elif t == "unsigned short":
 		data = struct.unpack("H", reader.read_bytes(2)[::-1])[0]
-	elif t == "struct types::iaabb":
-		data = {
-			"min": do_type(reader, "class ceng::math::CVector2<int>"),
-			"max": do_type(reader, "class ceng::math::CVector2<int>"),
-		}
 	elif t[: len(vec2)] == vec2:
 		true_type = t[len(vec2) : -1]
 		data = (
@@ -222,10 +217,9 @@ def do_type(reader: Reader, t: str) -> Any:
 	elif t == string or t == "string":
 		size = reader.read_be(4)
 		data = bstr(reader.read_bytes(size))
-	elif t == "ValueRange" or t == "struct ValueRange":
-		data = (do_type(reader, "float"), do_type(reader, "float"))
-	elif t == "ValueRangeInt":
-		data = (do_type(reader, "int"), do_type(reader, "int"))
+	elif t == "UintArrayInline" or t == "struct UintArrayInline":
+		size = reader.read_be(4)
+		data = [reader.read_be(4) for _ in range(size)]
 	elif t[-4:] == "Enum":
 		data = reader.read_be(type_sizes[t])
 	else:
@@ -234,6 +228,7 @@ def do_type(reader: Reader, t: str) -> Any:
 			for field in object_map[t]:
 				component_object[field[0]] = do_type(reader, field[1])
 			return component_object
+		print(hex(reader.ptr))
 		raise Exception("unknown type: " + t)
 	return data
 
