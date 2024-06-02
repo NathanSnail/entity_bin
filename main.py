@@ -129,16 +129,11 @@ for i in tree.documentElement.childNodes:
 		var_name = child.getAttribute("name")
 		var_size = int(child.getAttribute("size"))
 		var_type = child.getAttribute("type")
-		special = False
-		if var_type in ["class ConfigExplosion"]:
-			special = True
-
 		data = ComponentFieldData()
 		data.typename = var_type
 		data.field = var_name
 		v.append(data)
-		if not special:
-			type_sizes[var_type] = var_size
+		type_sizes[var_type] = var_size
 
 maybe_num_entities = data_reader.read_be(4)
 
@@ -178,17 +173,24 @@ def bstr(a: bytes) -> str:
 
 def do_type(reader: Reader, t: str) -> Any:
 	vec2 = "class ceng::math::CVector2<"
-	xform = "class ceng::math::CXForm<"
+	xform = "struct ceng::math::CXForm<"
 	lens = "struct LensValue<"
+	vector = "class std::vector<"
 	string = "class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >"
 	if t == "bool":
 		data = reader.read_bytes(1) == b"\x01"
 	elif t == "float":
 		data = struct.unpack("f", reader.read_bytes(4)[::-1])[0]
+	elif t == "double":
+		data = struct.unpack("d", reader.read_bytes(8)[::-1])[0]
 	elif t == "int":
 		data = struct.unpack("i", reader.read_bytes(4)[::-1])[0]
 	elif t == "unsigned int":
 		data = struct.unpack("I", reader.read_bytes(4)[::-1])[0]
+	elif t == "unsigned __int64":
+		data = struct.unpack("L", reader.read_bytes(8)[::-1])[0]
+	elif t == "unsigned short":
+		data = struct.unpack("H", reader.read_bytes(2)[::-1])[0]
 	elif t[: len(vec2)] == vec2:
 		true_type = t[len(vec2) : -1]
 		data = (
@@ -202,10 +204,20 @@ def do_type(reader: Reader, t: str) -> Any:
 			do_type(reader, true_type),
 			do_type(reader, "int"),
 		)
+	elif t[: len(xform)] == xform:
+		true_type = t[len(xform) : -1]
+		data = {
+			"position": do_type(reader, vec2 + true_type + ">"),
+			"scale": do_type(reader, vec2 + true_type + ">"),
+			"rotation": do_type(reader, true_type),
+		}
+	elif t[: len(vector)] == vector:
+		true_type = t[len(vector) :].split(",")[0]
+		data = [do_type(reader, true_type) for _ in range(reader.read_be(4))]
 	elif t == string or t == "string":
 		size = reader.read_be(4)
 		data = bstr(reader.read_bytes(size))
-	elif t == "ValueRange":
+	elif t == "ValueRange" or t == "struct ValueRange":
 		data = (do_type(reader, "float"), do_type(reader, "float"))
 	elif t == "ValueRangeInt":
 		data = (do_type(reader, "int"), do_type(reader, "int"))
@@ -232,9 +244,9 @@ def parse_component(reader: Reader) -> Component:
 	data = {}
 	print(component_name)
 	for field in fields:
-		# print(field.field, field.typename, end=" ")
+		print("\t", field.field, field.typename, end=" ")
 		data[field.field] = do_type(reader, field.typename)
-		# print("(" + str(data[field.field]) + ")")
+		print("\t", "(" + str(data[field.field]) + ")")
 	comp.fields = data
 	comp.name = component_name
 	comp.tags = component_tags.split(",")
