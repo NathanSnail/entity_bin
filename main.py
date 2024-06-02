@@ -1,4 +1,5 @@
 import ctypes
+import json
 import re
 import struct
 import sys
@@ -301,4 +302,6 @@ def parse_data(compressed_data):
 	return parented.children
 
 
-print(parse_data(compressed_data))
+parsed = {"entities": parse_data(compressed_data)}
+
+print(json.dumps(parsed, default=lambda x: x.__dict__))
