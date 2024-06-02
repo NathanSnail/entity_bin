@@ -161,4 +161,23 @@ object_map: dict[str, list[tuple[str, str]]] = {
 	"ValueRange": [("min", "float"), ("max", "float")],
 	"struct ValueRange": [("min", "float"), ("max", "float")],
 	"ValueRangeInt": [("min", "int"), ("max", "int")],
+	"struct types::iaabb": [
+		("min", "class ceng::math::CVector2<int>"),
+		("max", "class ceng::math::CVector2<int>"),
+	],
+	"struct types::aabb": [
+		("min", "class ceng::math::CVector2<float>"),
+		("max", "class ceng::math::CVector2<float>"),
+	],
+	"class ceng::CColorFloat": [
+		("r", "float"),
+		("g", "float"),
+		("b", "float"),
+		("a", "float"),
+	],
+	"struct PathFindingJumpParams": [
+		("x", "float"),
+		("y", "float"),
+		("lob", "float"),
+	],
 }
