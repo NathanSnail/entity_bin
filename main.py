@@ -183,9 +183,9 @@ def do_type(reader: Reader, t: str) -> Any:
 		data = struct.unpack("f", reader.read_bytes(4)[::-1])[0]
 	elif t == "double":
 		data = struct.unpack("d", reader.read_bytes(8)[::-1])[0]
-	elif t == "int":
+	elif t == "int" or t == "int32":
 		data = struct.unpack("i", reader.read_bytes(4)[::-1])[0]
-	elif t == "unsigned int":
+	elif t == "unsigned int" or t == "uint32":
 		data = struct.unpack("I", reader.read_bytes(4)[::-1])[0]
 	elif t == "unsigned __int64":
 		data = struct.unpack("L", reader.read_bytes(8)[::-1])[0]
