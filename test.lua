@@ -1,0 +1,16 @@
+local da = function(n)
+	local e = EntityLoad("data/entities/props/banner.xml", 18000, 2020)
+	EntitySetName(e, n)
+	return e
+end
+local a = da("a")
+local b = da("b")
+local c = da("c")
+local d = da("d")
+local e = da("e")
+local f = da("f")
+EntityAddChild(a, b)
+EntityAddChild(b, c)
+EntityAddChild(b, d)
+EntityAddChild(a, e)
+EntityAddChild(e, f)
