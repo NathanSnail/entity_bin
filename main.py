@@ -295,7 +295,8 @@ def parse_data(compressed_data):
 			i = i + 1
 
 	def handle(data: list[tuple[Entity, int]]) -> Entity:
-		v = data.pop(0)
+		v = data[0]
+		data = data[1:]
 		print(v[1])
 		for _ in range(v[1]):
 			v[0].children.append(handle(data))
