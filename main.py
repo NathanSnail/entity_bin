@@ -53,6 +53,12 @@ class Reader:
 				return val
 			val += bytes([x])
 
+	def read_bool(self) -> bool:
+		v = self.read_bytes(1)
+		if v[0] > 1:
+			raise Exception("invalid bool")
+		return v == b"\x01"
+
 	def mystery(self, count: int, message: str):
 		print(message, self.read_bytes(count))
 
@@ -121,7 +127,7 @@ def do_type(reader: Reader, t: str, type_sizes, component_data) -> Any:
 	vector = "class std::vector<"
 	string = "class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >"
 	if t == "bool":
-		data = reader.read_bytes(1) == b"\x01"
+		data = reader.read_bool()
 	elif t == "float":
 		data = struct.unpack("f", reader.read_bytes(4)[::-1])[0]
 	elif t == "double":
@@ -201,7 +207,7 @@ def parse_component(reader: Reader, type_sizes, component_data) -> Component:
 	component_name_len = reader.read_be(4)
 	component_name = bstr(reader.read_bytes(component_name_len))
 	reader.assertion(1, b"\x01", "1 in component")  # first is ??? second is enabled
-	enabled = reader.read_bytes(1) == "\x01"
+	enabled = reader.read_bool()
 	component_tag_len = reader.read_be(4)
 	component_tags = bstr(reader.read_bytes(component_tag_len))
 	fields = component_data[component_name]
@@ -213,7 +219,7 @@ def parse_component(reader: Reader, type_sizes, component_data) -> Component:
 	return Component(component_name, component_tags.split(","), data, enabled)
 
 
-def parse_data(compressed_data):
+def parse_data(compressed_data, file):
 	compressed_reader = Reader(compressed_data)
 	compressed_size, decompressed_size = compressed_reader.read_le(
 		4
@@ -229,8 +235,16 @@ def parse_data(compressed_data):
 	decompressed = b"".join([x for x in output_buffer])
 	open("./out", "wb").write(decompressed)
 	data_reader = Reader(decompressed)
-	data_reader.mystery(4, "?!")  # first is lz level? second is hash length
+	empty = data_reader.read_bytes(4)
+	if empty == b"\x00\x02\x00\x20":
+		pass  # empty file
+	elif empty == b"\x00\x00\x00\x02":
+		pass  # file with content
+	else:
+		raise Exception("invalid empty flag")
+	# empty is useless because hash size is 0 if empty
 	hash_size = data_reader.read_be(4)  # size info
+	# hash size is 0x20 if not empty
 	hash = data_reader.read_bytes(hash_size)
 	type_sizes = {}
 	component_data = {}
@@ -309,7 +323,7 @@ if __name__ == "__main__":
 	for file in files:
 		compressed_data = open(path + file, "rb").read()
 
-		parsed = parse_data(compressed_data)
+		parsed = parse_data(compressed_data, file)
 
 		entities += parsed
 	print(json.dumps({"entities": entities}, default=lambda x: x.__dict__))
