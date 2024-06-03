@@ -126,7 +126,7 @@ def do_type(reader: Reader, t: str, type_sizes, component_data) -> Any:
 	lens = "struct LensValue<"
 	vector = "class std::vector<"
 	string = "class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >"
-	if t == "bool":
+	if t == "bool":  # for errors
 		data = reader.read_bool()
 	elif t == "float":
 		data = struct.unpack("f", reader.read_bytes(4)[::-1])[0]
@@ -150,11 +150,15 @@ def do_type(reader: Reader, t: str, type_sizes, component_data) -> Any:
 		)
 	elif t[: len(lens)] == lens:
 		true_type = t[len(lens) : -1]
-		data = (
-			do_type(reader, true_type, type_sizes, component_data),
-			do_type(reader, true_type, type_sizes, component_data),
-			do_type(reader, "int", type_sizes, component_data),
-		)
+
+		data = do_type(reader, true_type, type_sizes, component_data)
+		do_type(reader, true_type, type_sizes, component_data)
+		do_type(reader, "int", type_sizes, component_data)
+		# data = {
+		# 	"later": do_type(reader, true_type, type_sizes, component_data),
+		# 	"earlier": do_type(reader, true_type, type_sizes, component_data),
+		# 	"frame": do_type(reader, "int", type_sizes, component_data),
+		# }
 	elif t[: len(xform)] == xform:
 		true_type = t[len(xform) : -1]
 		data = {
