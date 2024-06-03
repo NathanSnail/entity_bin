@@ -133,7 +133,7 @@ def do_type(reader: Reader, t: str, type_sizes, component_data) -> Any:
 	elif t == "double":
 		data = struct.unpack("d", reader.read_bytes(8)[::-1])[0]
 	elif t == "int" or t == "int32":
-		data = hex(struct.unpack("i", reader.read_bytes(4)[::-1])[0])
+		data = struct.unpack("i", reader.read_bytes(4)[::-1])[0]
 	elif t == "__int64":
 		data = struct.unpack("l", reader.read_bytes(8)[::-1])[0]
 	elif t == "unsigned int" or t == "uint32":
