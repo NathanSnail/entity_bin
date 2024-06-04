@@ -120,6 +120,19 @@ def bstr(a: bytes) -> str:
 	return str(a)[2:-1]
 
 
+trivial_types: dict[str, tuple[int, str]] = {
+	"float": (4, "f"),
+	"double": (8, "d"),
+	"int": (4, "i"),
+	"int32": (4, "i"),
+	"__int64": (8, "l"),
+	"unsigned int": (4, "I"),
+	"uint32": (4, "I"),
+	"unsigned __int64": (8, "L"),
+	"unsigned short": (2, "H"),
+}
+
+
 def do_type(reader: Reader, t: str, type_sizes, component_data) -> Any:
 	vec2 = "class ceng::math::CVector2<"
 	xform = "struct ceng::math::CXForm<"
@@ -128,20 +141,9 @@ def do_type(reader: Reader, t: str, type_sizes, component_data) -> Any:
 	string = "class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >"
 	if t == "bool":  # for errors
 		data = reader.read_bool()
-	elif t == "float":
-		data = struct.unpack("f", reader.read_bytes(4)[::-1])[0]
-	elif t == "double":
-		data = struct.unpack("d", reader.read_bytes(8)[::-1])[0]
-	elif t == "int" or t == "int32":
-		data = struct.unpack("i", reader.read_bytes(4)[::-1])[0]
-	elif t == "__int64":
-		data = struct.unpack("l", reader.read_bytes(8)[::-1])[0]
-	elif t == "unsigned int" or t == "uint32":
-		data = struct.unpack("I", reader.read_bytes(4)[::-1])[0]
-	elif t == "unsigned __int64":
-		data = struct.unpack("L", reader.read_bytes(8)[::-1])[0]
-	elif t == "unsigned short":
-		data = struct.unpack("H", reader.read_bytes(2)[::-1])[0]
+	elif t in trivial_types.keys():
+		pair = trivial_types[t]
+		data = struct.unpack(pair[1], reader.read_bytes(pair[0])[::-1])
 	elif t[: len(vec2)] == vec2:
 		true_type = t[len(vec2) : -1]
 		data = (
