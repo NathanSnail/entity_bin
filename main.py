@@ -6,6 +6,7 @@ import struct
 import sys
 import xml.dom.minidom
 from dataclasses import dataclass
+from os.path import isdir
 from typing import Any
 from xml.dom.minidom import parseString
 
@@ -225,7 +226,7 @@ def parse_component(reader: Reader, type_sizes, component_data) -> Component:
 	return Component(component_name, component_tags.split(","), data, enabled)
 
 
-def parse_data(compressed_data, file):
+def parse_data(compressed_data: bytes) -> list[Entity]:
 	compressed_reader = Reader(compressed_data)
 	compressed_size, decompressed_size = compressed_reader.read_le(
 		4
@@ -323,13 +324,20 @@ def parse_data(compressed_data, file):
 
 if __name__ == "__main__":
 	path = sys.argv[1]
-	files = os.listdir(path)
-	files = [x for x in files if "entities" in x]
 	entities = []
-	for file in files:
-		compressed_data = open(path + file, "rb").read()
+	if os.path.isdir(path):
+		files = os.listdir(path)
+		files = [x for x in files if "entities" in x]
+		entities = []
+		for file in files:
+			compressed_data = open(path + file, "rb").read()
 
-		parsed = parse_data(compressed_data, file)
+			try:
+				parsed = parse_data(compressed_data)
+			except Exception as e:
+				raise Exception("Error in file " + file) from e
 
-		entities += parsed
+			entities += parsed
+	else:
+		entities = parse_data(open(path, "rb").read())
 	print(json.dumps({"entities": entities}, default=lambda x: x.__dict__))
