@@ -1,5 +1,5 @@
 local da = function(n)
-	local e = EntityLoad("data/entities/props/banner.xml", 18000, 2020)
+	local e = EntityLoad("data/entities/props/banner.xml", 18000, 8)
 	EntitySetName(e, n)
 	return e
 end
@@ -14,3 +14,4 @@ EntityAddChild(b, c)
 EntityAddChild(b, d)
 EntityAddChild(a, e)
 EntityAddChild(e, f)
+local g = da("g")
