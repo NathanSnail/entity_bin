@@ -321,6 +321,9 @@ def parse_data(compressed_data: bytes) -> list[Entity]:
 	parented = handle(list(zip(entities, child_counts)))
 	return parented.children
 
+def compress(entities: list[Entity], schema: str) -> bytes:
+    pass
+
 
 if __name__ == "__main__":
 	path = sys.argv[1]
