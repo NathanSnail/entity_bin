@@ -6,7 +6,6 @@ import struct
 import sys
 import xml.dom.minidom
 from dataclasses import dataclass
-from os.path import isdir
 from typing import Any
 from xml.dom.minidom import parseString
 
@@ -226,6 +225,47 @@ def parse_component(reader: Reader, type_sizes, component_data) -> Component:
 	return Component(component_name, component_tags.split(","), data, enabled)
 
 
+def get_schema_data(hash):
+	type_sizes: dict[str, int] = {}
+	component_data: dict[str, list[ComponentFieldData]] = {}
+	if hash != b"":
+		schema_content = open(
+			"/home/nathan/Documents/code/noitadata/data/schemas/"
+			+ str(hash)[2:-1]
+			+ ".xml",
+			"r",
+		).read()
+
+		def fix(s):
+			os = s
+			s = re.sub(r'("[^\n]*)>([^\n]*")', r"\1&gt;\2", s)
+			s = re.sub(r'("[^\n]*)<([^\n]*")', r"\1&lt;\2", s)
+			if s == os:
+				return s
+			return fix(s)
+
+		schema_content = fix(schema_content)
+		tree = parseString(schema_content)
+		for i in tree.documentElement.childNodes:
+			if not isinstance(i, xml.dom.minidom.Element):
+				continue
+			comp_name = i.getAttribute("component_name")
+			v: list[ComponentFieldData] = []
+			component_data[comp_name] = v
+			for child in i.childNodes:
+				if not isinstance(child, xml.dom.minidom.Element):
+					continue
+				var_name = child.getAttribute("name")
+				var_size = int(child.getAttribute("size"))
+				var_type = child.getAttribute("type")
+				data = ComponentFieldData()
+				data.typename = var_type
+				data.field = var_name
+				v.append(data)
+				type_sizes[var_type] = var_size
+	return type_sizes, component_data
+
+
 def parse_data(compressed_data: bytes) -> list[Entity]:
 	compressed_reader = Reader(compressed_data)
 	compressed_size, decompressed_size = compressed_reader.read_le(
@@ -253,56 +293,13 @@ def parse_data(compressed_data: bytes) -> list[Entity]:
 	hash_size = data_reader.read_be(4)  # size info
 	# hash size is 0x20 if not empty
 	hash = data_reader.read_bytes(hash_size)
-	type_sizes = {}
-	component_data = {}
-	if hash != b"":
-		schema_content = open(
-			"/home/nathan/Documents/code/noitadata/data/schemas/"
-			+ str(hash)[2:-1]
-			+ ".xml",
-			"r",
-		).read()
-
-		def fix(s):
-			os = s
-			s = re.sub(r'("[^\n]*)>([^\n]*")', r"\1&gt;\2", s)
-			s = re.sub(r'("[^\n]*)<([^\n]*")', r"\1&lt;\2", s)
-			if s == os:
-				return s
-			return fix(s)
-
-		component_data: dict[str, list[ComponentFieldData]] = {}
-		type_sizes: dict[str, int] = {}
-
-		schema_content = fix(schema_content)
-		tree = parseString(schema_content)
-		for i in tree.documentElement.childNodes:
-			if not isinstance(i, xml.dom.minidom.Element):
-				continue
-			comp_name = i.getAttribute("component_name")
-			v: list[ComponentFieldData] = []
-			component_data[comp_name] = v
-			for child in i.childNodes:
-				if not isinstance(child, xml.dom.minidom.Element):
-					continue
-				var_name = child.getAttribute("name")
-				var_size = int(child.getAttribute("size"))
-				var_type = child.getAttribute("type")
-				data = ComponentFieldData()
-				data.typename = var_type
-				data.field = var_name
-				v.append(data)
-				type_sizes[var_type] = var_size
+	type_sizes, component_data = get_schema_data(hash)
 
 	maybe_num_entities = data_reader.read_be(4)
 
 	root = Entity("root", "??", [], 0, 0, 1, 1, 0, [], [])
 	child_counts = [maybe_num_entities]
 	entities = [root]
-	# for _ in range(maybe_num_entities):
-	# 	entities.append(
-	# 		parse_entity(data_reader, type_sizes, component_data, child_counts)
-	# 	)
 	i = 0
 	while i < sum(child_counts):
 		e = parse_entity(data_reader, type_sizes, component_data, child_counts)
@@ -321,8 +318,45 @@ def parse_data(compressed_data: bytes) -> list[Entity]:
 	parented = handle(list(zip(entities, child_counts)))
 	return parented.children
 
-def compress(entities: list[Entity], schema: str) -> bytes:
-    pass
+
+def save_component(component: Component, type_sizes, component_data) -> bytes:
+	pass
+
+
+def save_entity(entity: Entity, type_sizes, component_data) -> bytes:
+	data = b""
+	data += struct.pack("i", len(entity.name))[::-1]
+	data += entity.name.encode()
+	data += b"\x00"
+	data += struct.pack("i", len(entity.path))[::-1]
+	data += entity.path.encode()
+	tags = ",".join(entity.tags)
+	data += struct.pack("i", len(tags))[::-1]
+	data += tags.encode()
+	data += struct.pack("f", entity.x)[::-1]
+	data += struct.pack("f", entity.y)[::-1]
+	data += struct.pack("f", entity.size_x)[::-1]
+	data += struct.pack("f", entity.size_y)[::-1]
+	data += struct.pack("f", entity.rotation)[::-1]
+	data += struct.pack("i", len(entity.components))[::-1]
+	for component in entity.components:
+		data += save_component(component, type_sizes, component_data)
+	return data
+
+
+def save(entities: list[Entity], schema: str) -> bytes:
+	data = b""
+	if len(entities) == 0:
+		data += b"\x00\x02\x00\x20"
+		data += b"\x00\x00\x00\x00"
+		return data
+	data += b"\x00\x00\x00\x02"
+	data += b"\x00\x00\x00\x20"
+	data += schema.encode()
+	type_sizes, component_data = get_schema_data(schema.encode())
+	for entity in entities:
+		data += save_entity(entity, type_sizes, component_data)
+	return data
 
 
 if __name__ == "__main__":
