@@ -73,6 +73,9 @@ class ComponentFieldData:
 	field: str
 
 
+ComponentData = dict[str, list[ComponentFieldData]]
+
+
 @dataclass
 class Component:
 	name: str
@@ -130,6 +133,7 @@ trivial_types: dict[str, tuple[int, str]] = {
 	"uint32": (4, "I"),
 	"unsigned __int64": (8, "L"),
 	"unsigned short": (2, "H"),
+	"bool": (1, "b"),
 }
 
 
@@ -143,7 +147,7 @@ def do_type(reader: Reader, t: str, type_sizes, component_data) -> Any:
 		data = reader.read_bool()
 	elif t in trivial_types.keys():
 		pair = trivial_types[t]
-		data = struct.unpack(pair[1], reader.read_bytes(pair[0])[::-1])
+		data = struct.unpack(pair[1], reader.read_bytes(pair[0])[::-1])[0]
 	elif t[: len(vec2)] == vec2:
 		true_type = t[len(vec2) : -1]
 		data = (
@@ -153,9 +157,11 @@ def do_type(reader: Reader, t: str, type_sizes, component_data) -> Any:
 	elif t[: len(lens)] == lens:
 		true_type = t[len(lens) : -1]
 
-		data = do_type(reader, true_type, type_sizes, component_data)
-		do_type(reader, true_type, type_sizes, component_data)
-		do_type(reader, "int", type_sizes, component_data)
+		data = {
+			"value": do_type(reader, true_type, type_sizes, component_data),
+			"default": do_type(reader, true_type, type_sizes, component_data),
+			"frame": do_type(reader, "int", type_sizes, component_data),
+		}
 		# data = {
 		# 	"later": do_type(reader, true_type, type_sizes, component_data),
 		# 	"earlier": do_type(reader, true_type, type_sizes, component_data),
@@ -209,7 +215,9 @@ def do_type(reader: Reader, t: str, type_sizes, component_data) -> Any:
 	return data
 
 
-def parse_component(reader: Reader, type_sizes, component_data) -> Component:
+def parse_component(
+	reader: Reader, type_sizes: dict[str, int], component_data: ComponentData
+) -> Component:
 	component_name_len = reader.read_be(4)
 	component_name = bstr(reader.read_bytes(component_name_len))
 	reader.assertion(1, b"\x01", "1 in component")  # first is ??? second is enabled
@@ -227,7 +235,7 @@ def parse_component(reader: Reader, type_sizes, component_data) -> Component:
 
 def get_schema_data(hash):
 	type_sizes: dict[str, int] = {}
-	component_data: dict[str, list[ComponentFieldData]] = {}
+	component_data: ComponentData = {}
 	if hash != b"":
 		schema_content = open(
 			"/home/nathan/Documents/code/noitadata/data/schemas/"
@@ -319,8 +327,93 @@ def parse_data(compressed_data: bytes) -> list[Entity]:
 	return parented.children
 
 
-def save_component(component: Component, type_sizes, component_data) -> bytes:
-	pass
+def save_type(
+	t: str, value: Any, type_sizes: dict[str, int], component_data: ComponentData
+) -> bytes:
+	data = b""
+	vec2 = "class ceng::math::CVector2<"
+	xform = "struct ceng::math::CXForm<"
+	lens = "struct LensValue<"
+	vector = "class std::vector<"
+	string = "class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >"
+	print(t, value)
+	if t in trivial_types.keys():
+		data = struct.pack(trivial_types[t][1], value)[::-1]
+	elif t[: len(vec2)] == vec2:
+		true_type = t[len(vec2) : -1]
+		data = save_type(true_type, value[0], type_sizes, component_data) + save_type(
+			true_type, value[1], type_sizes, component_data
+		)
+	elif t[: len(lens)] == lens:
+		true_type = t[len(lens) : -1]
+		data = (
+			save_type(true_type, value["value"], type_sizes, component_data)
+			+ save_type(true_type, value["default"], type_sizes, component_data)
+			+ save_type("int", value["frame"], type_sizes, component_data)
+		)
+	elif t[: len(xform)] == xform:
+		true_type = t[len(xform) : -1]
+		data = (
+			save_type(
+				vec2 + true_type + ">", value["position"], type_sizes, component_data
+			)
+			+ save_type(
+				vec2 + true_type + ">", value["scale"], type_sizes, component_data
+			)
+			+ save_type(true_type, value["rotation"], type_sizes, component_data)
+		)
+	elif t[: len(vector)] == vector:
+		partial_type = t[len(vector) :]
+		true_type = ""
+		count = 0
+		for k, c in enumerate(partial_type):
+			if c == "," and count == 0:
+				true_type = partial_type[:k]
+			elif c == "<":
+				count += 1
+			elif c == ">":
+				count -= 1
+		data = save_type("int", len(value), type_sizes, component_data)
+		for v in value:
+			data += save_type(true_type, v, type_sizes, component_data)
+	elif t == string or t == "string":
+		data = save_type("int", len(value), type_sizes, component_data) + value.encode()
+	elif t == "UintArrayInline" or t == "struct UintArrayInline":
+		data = save_type("int", len(value), type_sizes, component_data)
+		for v in value:
+			data += save_type("uint32", v, type_sizes, component_data)
+	elif t[-4:] == "Enum":
+		data = save_type("uint32", value, type_sizes, component_data)
+	elif t == "struct SpriteStains *":
+		pass
+	else:
+		if t in object_map.keys():
+			for field in object_map[t]:
+				print(field)
+				data += save_type(field[1], value[field[0]], type_sizes, component_data)
+			return data
+		raise Exception("unknown type: " + t)
+	return data
+
+
+def save_component(
+	component: Component, type_sizes: dict[str, int], component_data: ComponentData
+) -> bytes:
+	data = b""
+	component_type = component.name
+	data += struct.pack("i", len(component_type))[::-1]
+	data += component_type.encode()
+	data += b"\x01"
+	data += struct.pack("b", component.enabled)
+	tags = ",".join(component.tags)
+	data += struct.pack("i", len(tags))[::-1]
+	data += tags.encode()
+	component_fields = component_data[component_type]
+	for field in component_fields:
+		ty = field.typename
+		data += save_type(ty, component.fields[field.field], type_sizes, component_data)
+
+	return data
 
 
 def save_entity(entity: Entity, type_sizes, component_data) -> bytes:
@@ -377,4 +470,7 @@ if __name__ == "__main__":
 			entities += parsed
 	else:
 		entities = parse_data(open(path, "rb").read())
-	print(json.dumps({"entities": entities}, default=lambda x: x.__dict__))
+	open("output.json", "w").write(
+		json.dumps({"entities": entities}, default=lambda x: x.__dict__)
+	)
+	save(entities, "c8ecfb341d22516067569b04563bff9c")
