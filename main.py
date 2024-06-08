@@ -442,6 +442,9 @@ def save(entities: list[Entity], schema: str) -> bytes:
 	if len(entities) == 0:
 		data += b"\x00\x02\x00\x20"
 		data += b"\x00\x00\x00\x00"
+		data += (
+			b"\x00" * 0x24
+		)  # ?? maybe hash of 00 00, and entity count of 0? 0x20 + 0x04 = 0x24
 		return data
 	data += b"\x00\x00\x00\x02"
 	data += b"\x00\x00\x00\x20"
@@ -473,4 +476,4 @@ if __name__ == "__main__":
 	open("output.json", "w").write(
 		json.dumps({"entities": entities}, default=lambda x: x.__dict__)
 	)
-	save(entities, "c8ecfb341d22516067569b04563bff9c")
+	open("saved", "wb").write(save(entities, "c8ecfb341d22516067569b04563bff9c"))
