@@ -434,6 +434,9 @@ def save_entity(entity: Entity, type_sizes, component_data) -> bytes:
 	data += struct.pack("i", len(entity.components))[::-1]
 	for component in entity.components:
 		data += save_component(component, type_sizes, component_data)
+	data += struct.pack("i", len(entity.children))[::-1]
+	for child in entity.children:
+		save_entity(child, type_sizes, component_data)
 	return data
 
 
@@ -449,6 +452,7 @@ def save(entities: list[Entity], schema: str) -> bytes:
 	data += b"\x00\x00\x00\x02"
 	data += b"\x00\x00\x00\x20"
 	data += schema.encode()
+	data += struct.pack("i", len(entities))[::-1]
 	type_sizes, component_data = get_schema_data(schema.encode())
 	for entity in entities:
 		data += save_entity(entity, type_sizes, component_data)
