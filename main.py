@@ -82,6 +82,7 @@ class Component:
 	tags: list[str]
 	fields: dict[str, Any]
 	enabled: bool
+	not_deleted_maybe: bytes
 
 
 @dataclass
@@ -96,12 +97,13 @@ class Entity:
 	rotation: float
 	components: list[Component]
 	children: list["Entity"]
+	deleted_maybe: bytes
 
 
 def parse_entity(reader: Reader, type_sizes, component_data, child_counts):
 	name_len = reader.read_be(4)
 	name = bstr(reader.read_bytes(name_len))
-	reader.assertion(1, b"\x00", "entity null expected")  # 0x00
+	deleted_maybe = reader.read_bytes(1)  # 0x00
 	path_len = reader.read_be(4)
 	path = bstr(reader.read_bytes(path_len))
 	tag_len = reader.read_be(4)
@@ -112,7 +114,7 @@ def parse_entity(reader: Reader, type_sizes, component_data, child_counts):
 	scale_y = reader.read_float()
 	rotation = reader.read_float()
 	maybe_num_comps = reader.read_be(4)
-	entity = Entity(name, path, tag, x, y, scale_x, scale_y, rotation, [], [])
+	entity = Entity(name, path, tag, x, y, scale_x, scale_y, rotation, [], [], deleted_maybe)
 	for _ in range(maybe_num_comps):
 		entity.components.append(parse_component(reader, type_sizes, component_data))
 	child_counts.append(reader.read_be(4))
@@ -220,7 +222,7 @@ def parse_component(
 ) -> Component:
 	component_name_len = reader.read_be(4)
 	component_name = bstr(reader.read_bytes(component_name_len))
-	reader.assertion(1, b"\x01", "1 in component")  # first is ??? second is enabled
+	deleted = reader.read_bytes(1)  # first is ??? second is enabled
 	enabled = reader.read_bool()
 	component_tag_len = reader.read_be(4)
 	component_tags = bstr(reader.read_bytes(component_tag_len))
@@ -230,7 +232,7 @@ def parse_component(
 		# print(field.field, field.typename, hex(reader.ptr), end=" ")
 		data[field.field] = do_type(reader, field.typename, type_sizes, component_data)
 		# print(data[field.field])
-	return Component(component_name, component_tags.split(","), data, enabled)
+	return Component(component_name, component_tags.split(","), data, enabled, deleted)
 
 
 def get_schema_data(hash):
@@ -305,7 +307,7 @@ def parse_data(compressed_data: bytes) -> list[Entity]:
 
 	maybe_num_entities = data_reader.read_be(4)
 
-	root = Entity("root", "??", [], 0, 0, 1, 1, 0, [], [])
+	root = Entity("root", "??", [], 0, 0, 1, 1, 0, [], [], b"")
 	child_counts = [maybe_num_entities]
 	entities = [root]
 	i = 0
@@ -403,7 +405,7 @@ def save_component(
 	component_type = component.name
 	data += struct.pack("i", len(component_type))[::-1]
 	data += component_type.encode()
-	data += b"\x01"
+	data += component.not_deleted_maybe
 	data += struct.pack("b", component.enabled)
 	tags = ",".join(component.tags)
 	data += struct.pack("i", len(tags))[::-1]
@@ -420,7 +422,7 @@ def save_entity(entity: Entity, type_sizes, component_data) -> bytes:
 	data = b""
 	data += struct.pack("i", len(entity.name))[::-1]
 	data += entity.name.encode()
-	data += b"\x00"
+	data += entity.deleted_maybe
 	data += struct.pack("i", len(entity.path))[::-1]
 	data += entity.path.encode()
 	tags = ",".join(entity.tags)
