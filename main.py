@@ -496,6 +496,8 @@ if __name__ == "__main__":
 	path = sys.argv[1]
 	entities = []
 	if os.path.isdir(path):
+		if path[-1] != "/":
+			path += "/"
 		files = os.listdir(path)
 		files = [x for x in files if "entities" in x]
 		entities = []
@@ -510,10 +512,10 @@ if __name__ == "__main__":
 			entities += parsed
 	else:
 		entities = parse_data(open(path, "rb").read())
-	open("output.json", "w").write(
+	open("./output.json", "w").write(
 		json.dumps(
 			{"entities": entities},
 			default=lambda x: str(x) if isinstance(x, bytes) else x.__dict__,
 		)
 	)
-	open("saved", "wb").write(save(entities, "c8ecfb341d22516067569b04563bff9c"))
+	open("./saved", "wb").write(save(entities, "c8ecfb341d22516067569b04563bff9c"))
