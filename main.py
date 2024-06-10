@@ -12,7 +12,7 @@ from xml.dom.minidom import parseString
 import config
 from data import object_map
 
-fastlz = ctypes.cdll.LoadLibrary("./fastlz.so" if config.windows else "./fastlz.dll")
+fastlz = ctypes.cdll.LoadLibrary("./fastlz.dll" if config.windows else "./fastlz.so")
 
 
 class Reader:
