@@ -153,6 +153,22 @@ def do_type(reader: Reader, t: str, type_sizes, component_data) -> Any:
 	elif t in trivial_types.keys():
 		pair = trivial_types[t]
 		data = struct.unpack(pair[1], reader.read_bytes(pair[0])[::-1])[0]
+	elif t == "special texture":
+		is_special = do_type(reader, "bool", type_sizes, component_data)
+		if not is_special:
+			return {"special": False, "data": [[]]}
+		(w, h) = do_type(reader, vec2 + "int>", type_sizes, component_data)
+		data = {
+			"special": True,
+			"data": [
+				[
+					do_type(reader, "uint32", type_sizes, component_data)
+					for x in range(w)
+				]
+				for y in range(h)
+			],
+		}  # material id arr?
+
 	elif t[: len(vec2)] == vec2:
 		true_type = t[len(vec2) : -1]
 		data = (
@@ -235,7 +251,8 @@ def parse_component(
 		# print(field.field, field.typename, hex(reader.ptr), end=" ")
 		data[field.field] = do_type(reader, field.typename, type_sizes, component_data)
 		# print(data[field.field])
-	return Component(component_name, component_tags.split(","), data, enabled, deleted)
+	comp = Component(component_name, component_tags.split(","), data, enabled, deleted)
+	return comp
 
 
 def get_schema_data(hash):
@@ -339,9 +356,23 @@ def save_type(
 	lens = "struct LensValue<"
 	vector = "class std::vector<"
 	string = "class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >"
-	print(t, value)
 	if t in trivial_types.keys():
 		data = struct.pack(trivial_types[t][1], value)[::-1]
+	elif t == "special texture":
+		if not value["special"]:
+			return b"\x00"
+		data = b"\x01"
+		data += save_type(
+			"int", len(value["data"]), type_sizes, component_data
+		) + save_type("int", len(value["data"][0]), type_sizes, component_data)
+		data += b"".join(
+			[
+				b"".join(
+					[save_type("uint32", y, type_sizes, component_data) for y in x]
+				)
+				for x in value["data"]
+			]
+		)
 	elif t[: len(vec2)] == vec2:
 		true_type = t[len(vec2) : -1]
 		data = save_type(true_type, value[0], type_sizes, component_data) + save_type(
@@ -392,7 +423,6 @@ def save_type(
 	else:
 		if t in object_map.keys():
 			for field in object_map[t]:
-				print(field)
 				data += save_type(field[1], value[field[0]], type_sizes, component_data)
 			return data
 		raise Exception("unknown type: " + t)
@@ -481,6 +511,9 @@ if __name__ == "__main__":
 	else:
 		entities = parse_data(open(path, "rb").read())
 	open("output.json", "w").write(
-		json.dumps({"entities": entities}, default=lambda x: x.__dict__)
+		json.dumps(
+			{"entities": entities},
+			default=lambda x: str(x) if isinstance(x, bytes) else x.__dict__,
+		)
 	)
 	open("saved", "wb").write(save(entities, "c8ecfb341d22516067569b04563bff9c"))

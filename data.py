@@ -217,6 +217,6 @@ object_map: dict[str, list[tuple[str, str]]] = {
 		("9", "bool"),
 		("10", "int"),
 		("11", "string"),
-		("12", "bool"),
+		("12", "special texture"),
 	],
 }
