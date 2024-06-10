@@ -9,9 +9,10 @@ from dataclasses import dataclass
 from typing import Any
 from xml.dom.minidom import parseString
 
+import config
 from data import object_map
 
-fastlz = ctypes.cdll.LoadLibrary("./fastlz.so")
+fastlz = ctypes.cdll.LoadLibrary("./fastlz.so" if config.windows else "./fastlz.dll")
 
 
 class Reader:
@@ -114,7 +115,9 @@ def parse_entity(reader: Reader, type_sizes, component_data, child_counts):
 	scale_y = reader.read_float()
 	rotation = reader.read_float()
 	maybe_num_comps = reader.read_be(4)
-	entity = Entity(name, path, tag, x, y, scale_x, scale_y, rotation, [], [], deleted_maybe)
+	entity = Entity(
+		name, path, tag, x, y, scale_x, scale_y, rotation, [], [], deleted_maybe
+	)
 	for _ in range(maybe_num_comps):
 		entity.components.append(parse_component(reader, type_sizes, component_data))
 	child_counts.append(reader.read_be(4))
@@ -240,9 +243,7 @@ def get_schema_data(hash):
 	component_data: ComponentData = {}
 	if hash != b"":
 		schema_content = open(
-			"/home/nathan/Documents/code/noitadata/data/schemas/"
-			+ str(hash)[2:-1]
-			+ ".xml",
+			config.schema_path + str(hash)[2:-1] + ".xml",
 			"r",
 		).read()
 
