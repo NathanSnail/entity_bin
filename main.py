@@ -133,10 +133,10 @@ trivial_types: dict[str, tuple[int, str]] = {
 	"double": (8, "d"),
 	"int": (4, "i"),
 	"int32": (4, "i"),
-	"__int64": (8, "l"),
+	"__int64": (8, "q"),
 	"unsigned int": (4, "I"),
 	"uint32": (4, "I"),
-	"unsigned __int64": (8, "L"),
+	"unsigned __int64": (8, "Q"),
 	"unsigned short": (2, "H"),
 	"bool": (1, "b"),
 }
